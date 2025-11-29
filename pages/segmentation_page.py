@@ -1,20 +1,3 @@
-# import pandas as pd
-# import streamlit as st
-
-# from src.core.state import get_api_client
-
-# st.caption("This page will segment donors into clusters once implemented.")
-
-# st.info("TODO: Implement things that segments donors into interesting groups/charts and visualize them.")
-
-# # api usage example:
-# api = get_api_client()
-# donations = api.get_donations()
-# df = pd.DataFrame(donations)
-
-# execute this command to run app: python -m streamlit run main.py
-
-# chatgpt test
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -29,24 +12,23 @@ from src.core.layout import sidebar_footer
 # ----- Layout -----
 sidebar_footer()
 # st.title("🧩 Segmentation")
-st.caption("Segmentiert Spender in Cluster, um Outreach zu priorisieren.")
+st.caption("Segments donors into clusters to prioritize outreach.")
 
 api = get_api_client()
 
-# =========================================================
 # Schritt A: Daten laden
-# =========================================================
-# Passe diese Calls an eure API an
+# Calls an API anpassen
 donations = api.get_donations()  # erwartet Liste von Dicts
-# donors = api.get_donors()      # optional, falls ihr Kontaktdaten getrennt habt
+# donors = api.get_donors()      # optional
 
 df = pd.DataFrame(donations)
 # Mappe CSV-Spalten auf interne Standardnamen
 column_mapping = {
     "Kontakt-ID": "donor_id",
     "Getätigt am Datum": "donation_date",
-    # <-- falls Spalte anders heißt (z.B. "Betrag CHF"), hier anpassen
     "Betrag": "amount",
+    "Vorname": "first_name",
+    "Nachname": "last_name",
 }
 
 # Prüfen, ob diese Originalspalten überhaupt existieren
@@ -57,10 +39,6 @@ if missing_orig:
 
 # Spalten umbenennen
 df = df.rename(columns=column_mapping)
-
-# st.subheader("DEBUG – Rohdaten vor Cleaning")
-st.dataframe(df[["donor_id", "donation_date", "amount"]].head(20))
-
 
 # --- Cleaning ---
 df["donation_date"] = pd.to_datetime(
@@ -82,9 +60,7 @@ if df.empty:
     st.warning("No valid donations found after cleaning.")
     st.stop()
 
-# =========================================================
-# Schritt C: RFM Features pro Spender
-# =========================================================
+# Schritt B: RFM Features pro Spender
 # Referenz = letzter Spendenzeitpunkt im Datensatz
 ref_date = df["donation_date"].max()
 
@@ -103,9 +79,7 @@ rfm = (
 
 rfm["span_days"] = (rfm["last_date"] - rfm["first_date"]).dt.days.clip(lower=0)
 
-# =========================================================
-# Schritt D: Transform + Scaling
-# =========================================================
+# Schritt C: Transform + Scaling
 features = rfm[["recency_days", "frequency", "monetary_total"]].copy()
 features["frequency"] = np.log1p(features["frequency"])
 features["monetary_total"] = np.log1p(features["monetary_total"])
@@ -113,10 +87,8 @@ features["monetary_total"] = np.log1p(features["monetary_total"])
 scaler = StandardScaler()
 X = scaler.fit_transform(features)
 
-# =========================================================
-# Schritt E: K wählen + KMeans fitten
-# =========================================================
-k = st.sidebar.slider("Anzahl Cluster (k)", 2, 8, 4)
+# Schritt D: K wählen + KMeans fitten
+k = st.sidebar.slider("Number of Clusters (k)", 2, 8, 4)
 
 if len(rfm) < k:
     st.warning(
@@ -126,9 +98,7 @@ if len(rfm) < k:
 km = KMeans(n_clusters=k, random_state=42, n_init="auto")
 rfm["cluster"] = km.fit_predict(X)
 
-# =========================================================
-# Schritt F: Cluster Summary + Segmentnamen
-# =========================================================
+# Schritt E: Cluster Summary + Segmentnamen
 summary = (
     rfm.groupby("cluster")
     .agg(
@@ -140,9 +110,10 @@ summary = (
     .reset_index()
 )
 
-# Original-Skala approx zurückrechnen (für bessere Lesbarkeit)
-summary["frequency_mean"] = np.expm1(summary["frequency_mean"])
-summary["monetary_mean"] = np.expm1(summary["monetary_mean"])
+# Werte runden
+summary[["recency_mean", "frequency_mean", "monetary_mean"]] = (
+    summary[["recency_mean", "frequency_mean", "monetary_mean"]].round(1)
+)
 
 rec_q = summary["recency_mean"].quantile([0.33, 0.67])
 freq_q = summary["frequency_mean"].quantile([0.33, 0.67])
@@ -177,11 +148,18 @@ def label_cluster(row):
 summary["segment"] = summary.apply(label_cluster, axis=1)
 rfm = rfm.merge(summary[["cluster", "segment"]], on="cluster", how="left")
 
-# =========================================================
-# Schritt G: Anzeigen + Visualisieren
-# =========================================================
-st.subheader("Cluster-Übersicht")
-st.dataframe(summary.sort_values("segment"))
+# Schritt F: Anzeigen + Visualisieren
+st.subheader("Cluster-Overview")
+summary_display = summary.sort_values("segment").rename(columns={
+    "cluster": "Cluster",
+    "donors": "Donors",
+    "recency_mean": "Avg. recency (days)",
+    "frequency_mean": "Avg. frequency",
+    "monetary_mean": "Avg. total amount",
+    "segment": "Segment",
+})
+
+st.dataframe(summary_display)
 
 pca = PCA(n_components=2, random_state=42)
 X2 = pca.fit_transform(X)
@@ -193,21 +171,19 @@ plot_df["segment"] = rfm["segment"]
 st.subheader("Cluster-Map (PCA)")
 st.scatter_chart(plot_df, x="PC1", y="PC2", color="cluster")
 
-st.subheader("Clustergrößen")
+st.subheader("Cluster-Sizes")
 cluster_sizes = rfm["segment"].value_counts().reset_index()
 cluster_sizes.columns = ["segment", "count"]
 st.bar_chart(cluster_sizes, x="segment", y="count")
 
-# =========================================================
-# Schritt H: Target List (Business Output)
-# =========================================================
-st.subheader("Target-Liste für Outreach")
+# Schritt G: Target List (Business Output)
+st.subheader("Target-List for Outreach")
 
 default_targets = [s for s in ["Champions / Core Supporters", "Potential Loyalists"]
                    if s in rfm["segment"].unique()]
 
 target_segments = st.multiselect(
-    "Welche Segmente sollen angezeigt werden?",
+    "Which segments should be displayed?",
     options=sorted(rfm["segment"].unique()),
     default=default_targets
 )
@@ -218,14 +194,29 @@ targets = targets.sort_values(
     ascending=[True, False, False]
 )
 
-st.dataframe(
-    targets[[
-        "donor_id", "segment", "recency_days",
-        "frequency", "monetary_total", "monetary_avg", "span_days"
-    ]]
-)
+# Namen zusammenführen
+if "first_name" in targets.columns and "last_name" in targets.columns:
+    targets["name"] = targets["first_name"] + " " + targets["last_name"]
+else:
+    targets["name"] = targets["donor_id"]   # fallback
+
+
+targets_display = targets[[
+    "name", "segment", "recency_days",
+    "frequency", "monetary_total", "monetary_avg", "span_days"
+]].rename(columns={
+    "name": "Donor",
+    "segment": "Segment",
+    "recency_days": "Recency (days)",
+    "frequency": "Frequency",
+    "monetary_total": "Total amount",
+    "monetary_avg": "Average amount",
+    "span_days": "Donation span (days)",
+})
+
+st.dataframe(targets_display)
 
 st.info(
-    "Interpretation: kleine Recency + hohe Frequency = sehr wahrscheinlich wieder spendebereit. "
-    "Diese Personen priorisieren (Danke-Mail, Karte, persönlicher Kontakt)."
+    "Interpretation: low recency + high frequency = very likely to donate again."
+    " Prioritize these individuals (thank-you email, card, personal contact)."
 )
