@@ -1,8 +1,3 @@
-#[[pages]]
-#path = "pages/dashboard_page.py"
-#name = "Dashboard"
-#icon = "📊"
-
 [[pages]]
 path = "pages/segmentation_page.py"
 name = "Segmentation"
