@@ -43,13 +43,14 @@ df = df.rename(columns=column_mapping)
 df["donation_date"] = pd.to_datetime(
     df["donation_date"], errors="coerce", dayfirst=True)
 
-# Beträge von deutschem Format ("1.234,56") nach Standard ("1234.56") bringen
-amount_str = df["amount"].astype(str)
-amount_str = amount_str.str.replace(
-    ".", "", regex=False)   # Tausenderpunkt entfernen
-amount_str = amount_str.str.replace(",", ".", regex=False)  # Komma -> Punkt
-
-df["amount"] = pd.to_numeric(amount_str, errors="coerce")
+# Beträge normalisieren: Nur wenn nicht numeric (z. B. CSV)
+if not pd.api.types.is_numeric_dtype(df["amount"]):
+    amount_str = df["amount"].astype(str)
+    amount_str = amount_str.str.replace(".", "", regex=False)
+    amount_str = amount_str.str.replace(",", ".", regex=False)
+    df["amount"] = pd.to_numeric(amount_str, errors="coerce")
+else:
+    df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
 
 # Entferne ungültige oder negative Werte
 df = df.dropna(subset=["donor_id", "donation_date", "amount"])

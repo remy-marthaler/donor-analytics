@@ -1,6 +1,8 @@
 import sys
 import os
 
+from src.core.state import get_api_client
+
 # --- 1. SETUP: Fix imports so we can find the API ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -25,14 +27,20 @@ def main():
     # --- REQUIREMENT 2: LOAD DATA VIA API ---
     @st.cache_data
     def get_data():
-        api = MockApiClient()
+        api = get_api_client()
         # Get raw data
         df = api.get_donations()
         
         # CLEANING: Fix weird date formats and money strings (e.g. "50,00")
         df["date"] = pd.to_datetime(df["Getätigt am Datum"], dayfirst=True, errors='coerce')
-        if df["Betrag"].dtype == 'object':
-            df["Betrag"] = df["Betrag"].astype(str).str.replace(',', '.').astype(float)
+        # Normalize Betrag ONLY if it is a string (from CSV)
+        if not pd.api.types.is_numeric_dtype(df["Betrag"]):
+            amount_str = df["Betrag"].astype(str)
+            amount_str = amount_str.str.replace(".", "", regex=False)
+            amount_str = amount_str.str.replace(",", ".", regex=False)
+            df["Betrag"] = pd.to_numeric(amount_str, errors="coerce")
+        else:
+            df["Betrag"] = pd.to_numeric(df["Betrag"], errors="coerce")
             
         return df
 
@@ -120,7 +128,7 @@ def main():
         use_container_width=True,
         column_config={
             "churn_prob": st.column_config.ProgressColumn("Risk Probability", format="%.2f"),
-            "avg_amount": st.column_config.NumberColumn("Avg Donation", format="CHF %.2f")
+            "avg_amount": st.column_config.NumberColumn("Avg Donation", format="CHF %.2f"),
         }
     )
     

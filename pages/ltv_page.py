@@ -54,10 +54,14 @@ def load_data():
 
     df["date"] = pd.to_datetime(df["date"], errors="coerce", dayfirst=True)
 
-    amt = df["amount"].astype(str)
-    amt = amt.str.replace(".", "", regex=False)
-    amt = amt.str.replace(",", ".", regex=False)
-    df["amount"] = pd.to_numeric(amt, errors="coerce")
+    # Ensure numeric amount
+    if not pd.api.types.is_numeric_dtype(df["amount"]):
+        amt = df["amount"].astype(str)
+        amt = amt.str.replace(".", "", regex=False)
+        amt = amt.str.replace(",", ".", regex=False)
+        df["amount"] = pd.to_numeric(amt, errors="coerce")
+    else:
+        df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
 
     df = df.dropna(subset=["donor_id", "date", "amount"])
     df = df[df["amount"] > 0]
