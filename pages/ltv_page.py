@@ -39,6 +39,7 @@ def safe_dataframe(df, columns):
 # ---------------------------------------------------------
 # Load + Clean Data
 # ---------------------------------------------------------
+@st.cache_data
 def load_data():
     api = get_api_client()
     donations = api.get_donations()
@@ -97,6 +98,7 @@ def compute_simple_ltv(df, expected_years=3):
 # ---------------------------------------------------------
 # ML LTV with CV + Tuning
 # ---------------------------------------------------------
+@st.cache_resource
 def compute_ml_ltv_models(df):
     ref_date = df["date"].max()
     rfm = (
@@ -219,7 +221,6 @@ def compute_ml_ltv_models(df):
 # Streamlit Page
 # ---------------------------------------------------------
 def run():
-    st.title("💰 Donor Lifetime Value (LTV) Analytics")
     st.caption("Heuristic and Machine-Learning based LTV estimation for donor prioritisation.")
 
     df = load_data()

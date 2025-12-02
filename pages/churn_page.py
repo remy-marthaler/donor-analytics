@@ -17,9 +17,8 @@ st.set_page_config(page_title="Churn Prediction", page_icon="🔮")
 
 def main():
     # --- REQUIREMENT 1: CLEARLY STATE THE PROBLEM ---
-    st.title("🔮 Donor Churn Predictor")
     st.markdown("""
-    **The Problem:** Charities lose money when donors stop giving ("Churn").
+    **The Problem:** Charities lose money when donors stop giving ("Churn").\n
     **The Solution:** We use Machine Learning to predict who is at risk so we can contact them.
     """)
 

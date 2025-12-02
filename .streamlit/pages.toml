@@ -1,7 +1,7 @@
-[[pages]]
-path = "pages/dashboard_page.py"
-name = "Dashboard"
-icon = "📊"
+#[[pages]]
+#path = "pages/dashboard_page.py"
+#name = "Dashboard"
+#icon = "📊"
 
 [[pages]]
 path = "pages/segmentation_page.py"
@@ -10,10 +10,10 @@ icon = "🧩"
 
 [[pages]]
 path = "pages/ltv_page.py"
-name = "Lifetime Value"
+name = "Donor Lifetime Value (LTV)"
 icon = "💰"
 
 [[pages]]
 path = "pages/churn_page.py"
-name = "Churn"
-icon = "📉"
+name = "Donor Churn Predictor"
+icon = "🔮"

@@ -10,7 +10,6 @@ from src.core.state import get_api_client
 from src.core.layout import sidebar_footer
 
 # ----- Layout -----
-sidebar_footer()
 # st.title("🧩 Segmentation")
 st.caption("Segments donors into clusters to prioritize outreach.")
 
@@ -88,6 +87,7 @@ scaler = StandardScaler()
 X = scaler.fit_transform(features)
 
 # Schritt D: K wählen + KMeans fitten
+st.sidebar.header("⚙️ Settings")
 k = st.sidebar.slider("Number of Clusters (k)", 2, 8, 4)
 
 if len(rfm) < k:
