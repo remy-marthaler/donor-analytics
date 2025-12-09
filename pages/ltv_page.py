@@ -1,8 +1,3 @@
-# ---------------------------------------------------------
-# Donor Lifetime Value Page
-# FINAL VERSION – Modern Design + What-If + Fail-Safe + CV + Tuning
-# ---------------------------------------------------------
-
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -14,69 +9,80 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 
 from src.core.state import get_api_client
 
-
-# ---------------------------------------------------------
-# Plotly "Corporate" Defaults (Modern Look)
-# ---------------------------------------------------------
+# --- GLOBAL VISUAL STYLE (Plotly) ---
+# Use a clean, white corporate-style template for all charts.
 pio.templates.default = "plotly_white"
 
 
-# ---------------------------------------------------------
-# Utility: Fail-safe column helpers
-# ---------------------------------------------------------
+# --- UTILITY FUNCTIONS: SAFE COLUMN HANDLING ---
 def safe_select(df, columns):
-    """Return only columns that exist in df."""
+    """Return only the columns that exist in the DataFrame."""
     return [c for c in columns if c in df.columns]
 
 
 def safe_dataframe(df, columns):
+    """Return a DataFrame restricted to valid columns; empty DataFrame if none exist."""
     cols = safe_select(df, columns)
     if not cols:
         return pd.DataFrame()
     return df[cols]
 
 
-# ---------------------------------------------------------
-# Load + Clean Data
-# ---------------------------------------------------------
+# --- DATA LOADING & CLEANING ---
 @st.cache_data
 def load_data():
+    """
+    Load donation data from the API and perform basic cleaning:
+    - rename German column names to English
+    - parse date strings
+    - convert 'amount' to numeric, including German number formats
+    - drop invalid or non-positive rows
+    """
     api = get_api_client()
-    donations = api.get_donations()
-    df = pd.DataFrame(donations)
+    df = pd.DataFrame(api.get_donations())
 
-    column_mapping = {
+    # Rename to internal column names
+    df = df.rename(columns={
         "Kontakt-ID": "donor_id",
         "Getätigt am Datum": "date",
         "Betrag": "amount",
-    }
-    df = df.rename(columns=column_mapping)
+    })
 
+    # Parse dates (day-first, because of German format)
     df["date"] = pd.to_datetime(df["date"], errors="coerce", dayfirst=True)
 
-    # Ensure numeric amount
+    # Convert amount column to numeric and handle German decimal/thousand formats
+    # NOTE: Parts of this implementation were developed with assistance from OpenAI ChatGPT (Dec 2025).
+    # The authors reviewed and validated the final logic.
     if not pd.api.types.is_numeric_dtype(df["amount"]):
         amt = df["amount"].astype(str)
-        amt = amt.str.replace(".", "", regex=False)
-        amt = amt.str.replace(",", ".", regex=False)
+        amt = amt.str.replace(".", "", regex=False)   # remove thousands separator: "1.234,56" -> "1234,56"
+        amt = amt.str.replace(",", ".", regex=False)  # decimal comma -> decimal point: "1234,56" -> "1234.56"
         df["amount"] = pd.to_numeric(amt, errors="coerce")
     else:
         df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
 
+    # Keep only valid rows with positive donation amounts
     df = df.dropna(subset=["donor_id", "date", "amount"])
     df = df[df["amount"] > 0]
 
     return df
 
 
-# ---------------------------------------------------------
-# Heuristic LTV
-# ---------------------------------------------------------
+# --- HEURISTIC LTV MODEL ---
 def compute_simple_ltv(df, expected_years=3):
+    """
+    Compute a simple heuristic Lifetime Value (LTV) per donor:
+
+    LTV = average donation amount * average donations per year * expected_years
+    """
+    # Group by donor to get all their donations
     grp = df.groupby("donor_id")
 
+    # Average donation amount per donor
     avg_amount = grp["amount"].mean()
 
+    # Average number of donations per year per donor
     d2 = df.copy()
     d2["year"] = d2["date"].dt.year
     freq = (
@@ -86,6 +92,7 @@ def compute_simple_ltv(df, expected_years=3):
         .mean()
     )
 
+    # Heuristic LTV formula
     ltv = avg_amount * freq * expected_years
 
     out = pd.DataFrame(
@@ -99,24 +106,37 @@ def compute_simple_ltv(df, expected_years=3):
     return out.sort_values("ltv", ascending=False)
 
 
-# ---------------------------------------------------------
-# ML LTV with CV + Tuning
-# ---------------------------------------------------------
+# --- ML LTV MODEL WITH CV + TUNING ---
 @st.cache_resource
 def compute_ml_ltv_models(df):
+    """
+    Build RFM-style features, construct a synthetic LTV-like target,
+    tune two models (Random Forest + Gradient Boosting) with cross-validation
+    and select the best one based on RMSE.
+    """
+
+    # NOTE: Parts of this implementation were developed with assistance from OpenAI ChatGPT (Dec 2025).
+    # This includes the RFM feature design, hyperparameter grids,
+    # RandomizedSearchCV structure and model comparison pattern.
+    # The authors reviewed and validated the final logic.
+
+    # Use the latest donation date as reference point for recency
     ref_date = df["date"].max()
+
+    # Create RFM feature table per donor
     rfm = (
         df.groupby("donor_id")
         .agg(
-            recency_days=("date", lambda x: (ref_date - x.max()).days),
-            frequency=("date", "count"),
-            monetary_total=("amount", "sum"),
-            monetary_avg=("amount", "mean"),
-            span_days=("date", lambda x: (x.max() - x.min()).days),
+            recency_days=("date", lambda x: (ref_date - x.max()).days),  # time since last donation
+            frequency=("date", "count"),                                  # number of donations
+            monetary_total=("amount", "sum"),                             # total donated amount
+            monetary_avg=("amount", "mean"),                              # average donation size
+            span_days=("date", lambda x: (x.max() - x.min()).days),       # active time span
         )
         .reset_index()
     )
 
+    # Create a synthetic "next year" target using current behaviour and a random factor
     rng = np.random.default_rng(42)
     rfm["target_next_year"] = (
         rfm["monetary_avg"].replace(0, 1)
@@ -124,6 +144,7 @@ def compute_ml_ltv_models(df):
         * (0.8 + 0.4 * rng.random(len(rfm)))
     )
 
+    # Feature matrix and target vector
     features = [
         "recency_days",
         "frequency",
@@ -134,16 +155,16 @@ def compute_ml_ltv_models(df):
     X = rfm[features]
     y = rfm["target_next_year"]
 
+    # 10-fold cross-validation (shuffled)
     kf = KFold(n_splits=10, shuffle=True, random_state=42)
 
-    # Hyperparameter grids
+    # Hyperparameter grids for the two models
     rf_param_grid = {
         "n_estimators": [200, 300, 400],
         "max_depth": [6, 8, 10, None],
         "min_samples_split": [2, 5, 10],
         "min_samples_leaf": [1, 2, 4],
     }
-
     gb_param_grid = {
         "n_estimators": [100, 200, 300],
         "learning_rate": [0.03, 0.05, 0.1],
@@ -151,7 +172,7 @@ def compute_ml_ltv_models(df):
         "subsample": [0.8, 1.0],
     }
 
-    # Random Forest
+    # Random Forest with RandomizedSearchCV
     rf_search = RandomizedSearchCV(
         RandomForestRegressor(random_state=42),
         rf_param_grid,
@@ -163,6 +184,7 @@ def compute_ml_ltv_models(df):
     )
     rf_search.fit(X, y)
     best_rf = rf_search.best_estimator_
+
     rf_rmse = -cross_val_score(
         best_rf, X, y, cv=kf, scoring="neg_root_mean_squared_error"
     ).mean()
@@ -170,7 +192,7 @@ def compute_ml_ltv_models(df):
         best_rf, X, y, cv=kf, scoring="neg_mean_absolute_error"
     ).mean()
 
-    # Gradient Boosting
+    # Gradient Boosting with RandomizedSearchCV
     gb_search = RandomizedSearchCV(
         GradientBoostingRegressor(random_state=42),
         gb_param_grid,
@@ -182,6 +204,7 @@ def compute_ml_ltv_models(df):
     )
     gb_search.fit(X, y)
     best_gb = gb_search.best_estimator_
+
     gb_rmse = -cross_val_score(
         best_gb, X, y, cv=kf, scoring="neg_root_mean_squared_error"
     ).mean()
@@ -189,7 +212,7 @@ def compute_ml_ltv_models(df):
         best_gb, X, y, cv=kf, scoring="neg_mean_absolute_error"
     ).mean()
 
-    # Compare models
+    # Model comparison table
     results_df = pd.DataFrame(
         [
             {
@@ -205,12 +228,14 @@ def compute_ml_ltv_models(df):
         ]
     ).sort_values("Root Mean Squared Error")
 
+    # Choose the model with the lowest RMSE
     best_model_name = results_df.iloc[0]["Model"]
     best_model = best_rf if best_model_name == "Random Forest" else best_gb
 
-    # Predicted LTV
+    # Predicted ML-LTV for each donor
     rfm["ml_ltv"] = best_model.predict(X)
 
+    # Feature importance for interpretation
     feat_imp = pd.DataFrame(
         {
             "Feature": features,
@@ -221,20 +246,24 @@ def compute_ml_ltv_models(df):
     return rfm, results_df, best_model_name, feat_imp, best_model
 
 
-# ---------------------------------------------------------
-# Streamlit Page
-# ---------------------------------------------------------
+# --- STREAMLIT PAGE LAYOUT & LOGIC ---
 def run():
+    """
+    Streamlit entry point for the Donor Lifetime Value page.
+    Provides:
+    - high-level KPIs and donation patterns
+    - heuristic LTV tab
+    - ML LTV tab with model diagnostics
+    - What-if Simulator tab
+    """
     st.caption("Heuristic and Machine-Learning based LTV estimation for donor prioritisation.")
 
     df = load_data()
 
-    # Precompute ML models once (for ML tab + What-if tab)
+    # Precompute ML model outputs for later tabs
     rfm_ml, results_df, best_model_name, feat_imp, best_model = compute_ml_ltv_models(df)
 
-    # -----------------------------------------------------
-    # Overview KPIs
-    # -----------------------------------------------------
+    # --- KPI OVERVIEW ---
     st.subheader("📌 Overview KPIs")
 
     c1, c2, c3, c4 = st.columns(4)
@@ -243,11 +272,10 @@ def run():
     c3.metric("💶 Average Donation", f"{df['amount'].mean():,.2f}")
     c4.metric("🧑 Donors Count", f"{df['donor_id'].nunique():,}")
 
-    # -----------------------------------------------------
-    # Donation Patterns (Modern Plotly)
-    # -----------------------------------------------------
+    # --- DONATION PATTERNS (TIME SERIES & DISTRIBUTION) ---
     st.subheader("📊 Donation Patterns")
 
+    # Monthly donation volume over time
     dmonth = df.copy()
     dmonth["month"] = dmonth["date"].dt.to_period("M").dt.to_timestamp()
     m_agg = dmonth.groupby("month")["amount"].sum().reset_index()
@@ -263,6 +291,7 @@ def run():
         fig_month.update_traces(mode="lines+markers")
         st.plotly_chart(fig_month, use_container_width=True)
 
+    # Distribution of donation amounts (log scale to show heavy tail)
     df_pos = df[df["amount"] > 0]
     if not df_pos.empty:
         fig_amount = px.histogram(
@@ -275,23 +304,21 @@ def run():
         )
         st.plotly_chart(fig_amount, use_container_width=True)
 
-    # -----------------------------------------------------
-    # Tabs: Heuristic, ML, What-if
-    # -----------------------------------------------------
+    # --- MAIN TABS: HEURISTIC, ML, WHAT-IF ---
     tab1, tab2, tab3 = st.tabs(["📐 Heuristic Model", "🤖 ML Model", "🧪 What-if Simulator"])
 
-    # -----------------------------------------------------
-    # TAB 1 — Heuristic
-    # -----------------------------------------------------
+    # --- TAB 1: HEURISTIC MODEL ---
     with tab1:
         st.subheader("Heuristic LTV Calculation")
 
+        # User chooses assumed donor lifetime in years
         exp_years = st.slider(
             "Expected donor lifetime (years)", 1, 10, 3
         )
 
         ltv = compute_simple_ltv(df, exp_years)
 
+        # Show heuristic LTV distribution
         ltv_pos = ltv[ltv["ltv"] > 0].reset_index()
         if not ltv_pos.empty:
             fig_ltv = px.histogram(
@@ -304,6 +331,7 @@ def run():
             )
             st.plotly_chart(fig_ltv, use_container_width=True)
 
+        # More readable column names for the table
         pretty_heur = {
             "donor_id": "Donor ID",
             "avg_amount": "Average Donation",
@@ -316,14 +344,14 @@ def run():
             use_container_width=True,
         )
 
-    # -----------------------------------------------------
-    # TAB 2 — ML
-    # -----------------------------------------------------
+    # --- TAB 2: ML MODEL ---
     with tab2:
         st.subheader("Machine Learning LTV Prediction")
 
-        st.markdown(f"**Best Model Selected:** `{best_model_name}`")
+        # Show which model performed best
+        st.markdown(f"*Best Model Selected:* {best_model_name}")
 
+        # Model comparison table (RF vs GB)
         st.subheader("Model Performance Comparison")
         st.dataframe(results_df, use_container_width=True)
 
@@ -333,7 +361,7 @@ def run():
             "Lower values = better model."
         )
 
-        # Feature Importance (normalized + pretty)
+        # --- Feature Importance (normalized) ---
         st.subheader("Key Drivers of Predicted LTV")
 
         pretty_features = {
@@ -347,6 +375,10 @@ def run():
         feat_imp_pretty = feat_imp.copy()
         feat_imp_pretty["Feature"] = feat_imp_pretty["Feature"].map(pretty_features)
 
+        # NOTE: Parts of this implementation were developed with assistance from OpenAI ChatGPT (Dec 2025).
+        # Specifically, the idea to normalise feature importances to a 0–100 scale
+        # and to visualise them as a horizontal bar chart for interpretability.
+        # The authors checked that the normalisation and plotting logic is correct.
         max_val = feat_imp_pretty["Importance"].max()
         feat_imp_pretty["Importance (normalized)"] = (
             feat_imp_pretty["Importance"] / max_val * 100
@@ -366,17 +398,25 @@ def run():
         fig_feat.update_layout(xaxis=dict(range=[0, 100]))
         st.plotly_chart(fig_feat, use_container_width=True)
 
-        # Business Impact
+        # --- Business Impact Metrics ---
         st.subheader("💼 Business Impact")
 
+        # Total predicted LTV (sum over all donors)
         total_ltv = rfm_ml["ml_ltv"].sum()
+
+        # Identify top 10% donors by predicted LTV
         q90 = rfm_ml["ml_ltv"].quantile(0.90)
         top10 = rfm_ml[rfm_ml["ml_ltv"] >= q90]
         top10_value = top10["ml_ltv"].sum()
         share = top10_value / total_ltv if total_ltv > 0 else 0
 
+        # Among top donors, mark those with recency > 365 days as "at risk"
         at_risk = top10[top10["recency_days"] > 365]
         at_risk_value = at_risk["ml_ltv"].sum()
+
+        # Hypothetical recoverable share of at-risk LTV (e.g. 35%)
+        # NOTE: Parts of this business-impact design were developed with assistance from OpenAI ChatGPT (Dec 2025).
+        # The authors chose thresholds (top 10%, 365 days, 35%) and verified that the metrics support the story.
         predicted_gap = at_risk_value * 0.35
 
         b1, b2, b3, b4 = st.columns(4)
@@ -385,6 +425,7 @@ def run():
         b3.metric("Revenue at Risk", f"{at_risk_value:,.0f}", "Top donors with no donation > 12 months")
         b4.metric("Predicted Revenue Gap", f"{predicted_gap:,.0f}", "Potentially recoverable")
 
+        # Show per-donor ML LTV table
         pretty_ml = {
             "donor_id": "Donor ID",
             "recency_days": "Days Since Last Donation",
@@ -409,6 +450,7 @@ def run():
                 use_container_width=True,
             )
 
+        # Highlight high-value donors who are also at risk
         if not at_risk.empty:
             st.subheader("High-value Donors at Risk")
             at_risk_display = at_risk.rename(columns=pretty_ml)
@@ -419,9 +461,7 @@ def run():
                     use_container_width=True,
                 )
 
-    # -----------------------------------------------------
-    # TAB 3 — What-if Simulator
-    # -----------------------------------------------------
+    # --- TAB 3: WHAT-IF SIMULATOR ---
     with tab3:
         st.subheader("What-if Simulator")
 
@@ -430,7 +470,7 @@ def run():
             "would impact predicted donor lifetime value."
         )
 
-        # Sliders (global adjustments)
+        # Global slider inputs for scenario definition
         col_w1, col_w2 = st.columns(2)
         with col_w1:
             freq_factor = st.slider(
@@ -463,7 +503,7 @@ def run():
                 15,
             )
 
-        # Base features
+        # Base feature matrix (current situation)
         feature_cols = [
             "recency_days",
             "frequency",
@@ -471,10 +511,12 @@ def run():
             "monetary_avg",
             "span_days",
         ]
-
         X_base = rfm_ml[feature_cols].copy()
 
-        # Adjusted scenario
+        # Build transformed scenario features
+        # NOTE: Parts of this What-if transformation logic were developed with assistance from OpenAI ChatGPT (Dec 2025).
+        # The authors adapted the scenario mechanics (sliders, clipping, total recomputation)
+        # to match the use case and validated them.
         X_new = X_base.copy()
         X_new["frequency"] = (X_new["frequency"] * freq_factor).clip(lower=0.1)
         X_new["monetary_avg"] = (X_new["monetary_avg"] * amount_factor).clip(lower=0)
@@ -482,7 +524,7 @@ def run():
         X_new["recency_days"] = (X_new["recency_days"] + recency_delta).clip(lower=0)
         X_new["span_days"] = (X_new["span_days"] + span_delta).clip(lower=0)
 
-        # Predictions
+        # Current vs scenario predictions
         base_ltv = rfm_ml["ml_ltv"].values
         new_ltv = best_model.predict(X_new)
 
@@ -496,7 +538,7 @@ def run():
         c2.metric("What-if Total Predicted LTV", f"{total_new:,.0f}")
         c3.metric("Change", f"{delta_abs:,.0f}", f"{delta_pct:,.1f}%")
 
-        # Distribution shift
+        # Show distribution shift: current vs what-if
         st.subheader("Distribution Shift (Current vs What-if)")
 
         df_hist = pd.DataFrame(
@@ -518,7 +560,7 @@ def run():
         )
         st.plotly_chart(fig_sim, use_container_width=True)
 
-        # Top donors under scenario
+        # Top donors under the what-if scenario
         st.subheader("Top Donors under What-if Scenario")
 
         rfm_sim = rfm_ml.copy()
@@ -553,8 +595,6 @@ def run():
             )
 
 
-# ---------------------------------------------------------
-# Required by Streamlit
-# ---------------------------------------------------------
-if __name__ == "__main__":
+# --- STREAMLIT ENTRY POINT ---
+if _name_ == "_main_":
     run()
