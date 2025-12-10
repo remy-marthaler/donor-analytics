@@ -34,6 +34,9 @@ def main():
         # CLEANING: Fix weird date formats and money strings (e.g. "50,00")
         df["date"] = pd.to_datetime(df["Getätigt am Datum"], dayfirst=True, errors='coerce')
         # Normalize Betrag ONLY if it is a string (from CSV)
+        # NOTE: Parts of this implementation were developed with assistance from OpenAI ChatGPT (Dec 2025).
+        # Specifically, the logic to handle European number formats (removing dots, replacing commas).
+        # The authors reviewed and validated the final logic.
         if not pd.api.types.is_numeric_dtype(df["Betrag"]):
             amount_str = df["Betrag"].astype(str)
             amount_str = amount_str.str.replace(".", "", regex=False)
@@ -74,8 +77,11 @@ def main():
     # Define who has ALREADY churned (The "Truth" for training)
     donors["is_churned"] = (donors["recency"] > threshold).astype(int)
 
-    # --- REQUIREMENT 5: MACHINE LEARNING (Simplified) ---
+    # --- REQUIREMENT 5: MACHINE LEARNING ---
     # We teach the computer: "Look at Amount and Frequency. Does this usually lead to Churn?"
+    # NOTE: Parts of this implementation were developed with assistance from OpenAI ChatGPT (Dec 2025).
+    # Specifically, the setup of the Logistic Regression model and the extraction of probabilities using predict_proba.
+    # The authors reviewed and validated the final logic.
     
     # 1. Prepare inputs (X) and target (y)
     X = donors[["avg_amount", "frequency"]]
@@ -122,6 +128,10 @@ def main():
         (donors["is_churned"] == 0) & 
         (donors["churn_prob"] > 0.70)
     ].sort_values("avg_amount", ascending=False)
+
+    # NOTE: Parts of this implementation were developed with assistance from OpenAI ChatGPT (Dec 2025).
+    # Specifically, the configuration of the 'ProgressColumn' for visualizing probabilities in the dataframe.
+    # The authors reviewed and validated the final logic.
     
     st.dataframe(
         at_risk[["avg_amount", "frequency", "recency", "churn_prob"]],
