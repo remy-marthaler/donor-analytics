@@ -10,18 +10,17 @@ from src.core.state import get_api_client
 from src.core.layout import sidebar_footer
 
 # ----- Layout -----
-# st.title("🧩 Segmentation")
 st.caption("Segments donors into clusters to prioritize outreach.")
 
 api = get_api_client()
 
-# Schritt A: Daten laden
-# Calls an API anpassen
-donations = api.get_donations()  # erwartet Liste von Dicts
+# Step A: loading data
+# adjust calls to the API
+donations = api.get_donations()  # expects list from dicts
 # donors = api.get_donors()      # optional
 
 df = pd.DataFrame(donations)
-# Mappe CSV-Spalten auf interne Standardnamen
+# map CSV-column to intern standard names
 column_mapping = {
     "Kontakt-ID": "donor_id",
     "Getätigt am Datum": "donation_date",
@@ -30,20 +29,20 @@ column_mapping = {
     "Nachname": "last_name",
 }
 
-# Prüfen, ob diese Originalspalten überhaupt existieren
+# test, if these original columns exist
 missing_orig = [c for c in column_mapping.keys() if c not in df.columns]
 if missing_orig:
     st.error(f"CSV/Mock API fehlt folgende Spalten: {missing_orig}")
     st.stop()
 
-# Spalten umbenennen
+# rename columns
 df = df.rename(columns=column_mapping)
 
 # --- Cleaning ---
 df["donation_date"] = pd.to_datetime(
     df["donation_date"], errors="coerce", dayfirst=True)
 
-# Beträge normalisieren: Nur wenn nicht numeric (z. B. CSV)
+# normalise amounts: only if not numeric (z. B. CSV)
 if not pd.api.types.is_numeric_dtype(df["amount"]):
     amount_str = df["amount"].astype(str)
     amount_str = amount_str.str.replace(".", "", regex=False)
@@ -52,7 +51,7 @@ if not pd.api.types.is_numeric_dtype(df["amount"]):
 else:
     df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
 
-# Entferne ungültige oder negative Werte
+# delete invalid or negative values
 df = df.dropna(subset=["donor_id", "donation_date", "amount"])
 df = df[df["amount"] > 0]
 
@@ -60,8 +59,8 @@ if df.empty:
     st.warning("No valid donations found after cleaning.")
     st.stop()
 
-# Schritt B: RFM Features pro Spender
-# Referenz = letzter Spendenzeitpunkt im Datensatz
+# Step B: RFM features per donor
+# Reference = last donor timing in dataset
 ref_date = df["donation_date"].max()
 
 rfm = (
@@ -79,7 +78,7 @@ rfm = (
 
 rfm["span_days"] = (rfm["last_date"] - rfm["first_date"]).dt.days.clip(lower=0)
 
-# Schritt C: Transform + Scaling
+# Step C: Transforming and Scaling
 features = rfm[["recency_days", "frequency", "monetary_total"]].copy()
 features["frequency"] = np.log1p(features["frequency"])
 features["monetary_total"] = np.log1p(features["monetary_total"])
@@ -87,7 +86,7 @@ features["monetary_total"] = np.log1p(features["monetary_total"])
 scaler = StandardScaler()
 X = scaler.fit_transform(features)
 
-# Schritt D: K wählen + KMeans fitten
+# Step D: choosing K and fitting KMeans 
 st.sidebar.header("⚙️ Settings")
 k = st.sidebar.slider("Number of Clusters (k)", 2, 8, 4)
 
@@ -99,7 +98,7 @@ if len(rfm) < k:
 km = KMeans(n_clusters=k, random_state=42, n_init="auto")
 rfm["cluster"] = km.fit_predict(X)
 
-# Schritt E: Cluster Summary + Segmentnamen
+# Step E: Cluster summary and segment-names
 summary = (
     rfm.groupby("cluster")
     .agg(
@@ -111,7 +110,7 @@ summary = (
     .reset_index()
 )
 
-# Werte runden
+# rounding values
 summary[["recency_mean", "frequency_mean", "monetary_mean"]] = (
     summary[["recency_mean", "frequency_mean", "monetary_mean"]].round(1)
 )
@@ -122,23 +121,23 @@ mon_q = summary["monetary_mean"].quantile([0.33, 0.67])
 
 
 def label_cluster(row):
-    # Champions: sehr kürzlich, sehr häufig, sehr viel
+    # Champions: very recently, very frequently, very much
     if (row["recency_mean"] <= rec_q.loc[0.33] and
         row["frequency_mean"] >= freq_q.loc[0.67] and
             row["monetary_mean"] >= mon_q.loc[0.67]):
         return "Champions / Core Supporters"
 
-    # Recent one-timers: kürzlich, aber selten + wenig
+    # Recent one-timers: recently, but rarely and little
     if (row["recency_mean"] <= rec_q.loc[0.33] and
             row["frequency_mean"] <= freq_q.loc[0.33]):
         return "Recent One-Timers"
 
-    # Lapsed big donors: lange her, aber hoher Betrag
+    # Lapsed big donors: long time ago, but a large amount
     if (row["recency_mean"] >= rec_q.loc[0.67] and
             row["monetary_mean"] >= mon_q.loc[0.67]):
         return "Lapsed Big Donors"
 
-    # Lost donors: lange her, selten
+    # Lost donors: long time ago, rarely
     if (row["recency_mean"] >= rec_q.loc[0.67] and
             row["frequency_mean"] <= freq_q.loc[0.33]):
         return "Lost Donors"
@@ -149,7 +148,7 @@ def label_cluster(row):
 summary["segment"] = summary.apply(label_cluster, axis=1)
 rfm = rfm.merge(summary[["cluster", "segment"]], on="cluster", how="left")
 
-# Schritt F: Anzeigen + Visualisieren
+# Step F: view and visualize
 st.subheader("Cluster-Overview")
 summary_display = summary.sort_values("segment").rename(columns={
     "cluster": "Cluster",
@@ -177,7 +176,7 @@ cluster_sizes = rfm["segment"].value_counts().reset_index()
 cluster_sizes.columns = ["segment", "count"]
 st.bar_chart(cluster_sizes, x="segment", y="count")
 
-# Schritt G: Target List (Business Output)
+# Step G: Target List (Business Output)
 st.subheader("Target-List for Outreach")
 
 default_targets = [s for s in ["Champions / Core Supporters", "Potential Loyalists"]
@@ -195,7 +194,7 @@ targets = targets.sort_values(
     ascending=[True, False, False]
 )
 
-# Namen zusammenführen
+# Merge names
 if "first_name" in targets.columns and "last_name" in targets.columns:
     targets["name"] = targets["first_name"] + " " + targets["last_name"]
 else:
