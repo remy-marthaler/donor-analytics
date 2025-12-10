@@ -128,10 +128,6 @@ def main():
         (donors["is_churned"] == 0) & 
         (donors["churn_prob"] > 0.70)
     ].sort_values("avg_amount", ascending=False)
-
-    # NOTE: Parts of this implementation were developed with assistance from OpenAI ChatGPT (Dec 2025).
-    # Specifically, the configuration of the 'ProgressColumn' for visualizing probabilities in the dataframe.
-    # The authors reviewed and validated the final logic.
     
     st.dataframe(
         at_risk[["avg_amount", "frequency", "recency", "churn_prob"]],
