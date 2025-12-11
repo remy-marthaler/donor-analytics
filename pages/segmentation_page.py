@@ -39,15 +39,16 @@ if missing_orig:
 df = df.rename(columns=column_mapping)
 
 # --- Cleaning ---
+# Convert raw date strings into datetime objects, coercing invalid formats
 df["donation_date"] = pd.to_datetime(
     df["donation_date"], errors="coerce", dayfirst=True)
 
 # normalise amounts: only if not numeric (z. B. CSV)
 if not pd.api.types.is_numeric_dtype(df["amount"]):
-    amount_str = df["amount"].astype(str)
-    amount_str = amount_str.str.replace(".", "", regex=False)
-    amount_str = amount_str.str.replace(",", ".", regex=False)
-    df["amount"] = pd.to_numeric(amount_str, errors="coerce")
+    amount_str = df["amount"].astype(str) # coded with AI assistance from ChatGPT
+    amount_str = amount_str.str.replace(".", "", regex=False) # coded with AI assistance from ChatGPT
+    amount_str = amount_str.str.replace(",", ".", regex=False) # coded with AI assistance from ChatGPT
+    df["amount"] = pd.to_numeric(amount_str, errors="coerce") # coded with AI assistance from ChatGPT
 else:
     df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
 
@@ -60,18 +61,19 @@ if df.empty:
     st.stop()
 
 # Step B: RFM features per donor
+# Compute RFM features per donor (recency, frequency, monetary value)
 # Reference = last donor timing in dataset
 ref_date = df["donation_date"].max()
 
 rfm = (
     df.groupby("donor_id")
-    .agg(
-        recency_days=("donation_date", lambda x: (ref_date - x.max()).days),
-        frequency=("donation_date", "count"),
-        monetary_total=("amount", "sum"),
-        monetary_avg=("amount", "mean"),
-        first_date=("donation_date", "min"),
-        last_date=("donation_date", "max"),
+    .agg( 
+        recency_days=("donation_date", lambda x: (ref_date - x.max()).days), # coded with AI assistance from ChatGPT
+        frequency=("donation_date", "count"), # coded with AI assistance from ChatGPT
+        monetary_total=("amount", "sum"), # coded with AI assistance from ChatGPT
+        monetary_avg=("amount", "mean"), # coded with AI assistance from ChatGPT
+        first_date=("donation_date", "min"), # coded with AI assistance from ChatGPT
+        last_date=("donation_date", "max"), # coded with AI assistance from ChatGPT
     )
     .reset_index()
 )
@@ -79,9 +81,10 @@ rfm = (
 rfm["span_days"] = (rfm["last_date"] - rfm["first_date"]).dt.days.clip(lower=0)
 
 # Step C: Transforming and Scaling
+# Apply log-transformation to reduce skew in frequency and monetary features
 features = rfm[["recency_days", "frequency", "monetary_total"]].copy()
-features["frequency"] = np.log1p(features["frequency"])
-features["monetary_total"] = np.log1p(features["monetary_total"])
+features["frequency"] = np.log1p(features["frequency"]) # coded with AI assistance from ChatGPT
+features["monetary_total"] = np.log1p(features["monetary_total"]) # coded with AI assistance from ChatGPT
 
 scaler = StandardScaler()
 X = scaler.fit_transform(features)
@@ -114,13 +117,13 @@ summary = (
 summary[["recency_mean", "frequency_mean", "monetary_mean"]] = (
     summary[["recency_mean", "frequency_mean", "monetary_mean"]].round(1)
 )
+# Compute quantile thresholds for segmentation
+rec_q = summary["recency_mean"].quantile([0.33, 0.67]) # coded with AI assistance from ChatGPT
+freq_q = summary["frequency_mean"].quantile([0.33, 0.67]) # coded with AI assistance from ChatGPT
+mon_q = summary["monetary_mean"].quantile([0.33, 0.67]) # coded with AI assistance from ChatGPT
 
-rec_q = summary["recency_mean"].quantile([0.33, 0.67])
-freq_q = summary["frequency_mean"].quantile([0.33, 0.67])
-mon_q = summary["monetary_mean"].quantile([0.33, 0.67])
 
-
-def label_cluster(row):
+def label_cluster(row): # coded with AI assistance from ChatGPT
     # Champions: very recently, very frequently, very much
     if (row["recency_mean"] <= rec_q.loc[0.33] and
         row["frequency_mean"] >= freq_q.loc[0.67] and
@@ -160,9 +163,9 @@ summary_display = summary.sort_values("segment").rename(columns={
 })
 
 st.dataframe(summary_display)
-
-pca = PCA(n_components=2, random_state=42)
-X2 = pca.fit_transform(X)
+# Project scaled features into 2D using PCA for visualization
+pca = PCA(n_components=2, random_state=42) # coded with AI assistance from ChatGPT
+X2 = pca.fit_transform(X) # coded with AI assistance from ChatGPT
 
 plot_df = pd.DataFrame(X2, columns=["PC1", "PC2"])
 plot_df["cluster"] = rfm["cluster"]
@@ -187,11 +190,11 @@ target_segments = st.multiselect(
     options=sorted(rfm["segment"].unique()),
     default=default_targets
 )
-
+# Rank donors for outreach: recent first, then high frequency and amount
 targets = rfm[rfm["segment"].isin(target_segments)].copy()
-targets = targets.sort_values(
-    ["recency_days", "frequency", "monetary_total"],
-    ascending=[True, False, False]
+targets = targets.sort_values( # coded with AI assistance from ChatGPT
+    ["recency_days", "frequency", "monetary_total"], # coded with AI assistance from ChatGPT
+    ascending=[True, False, False] # coded with AI assistance from ChatGPT
 )
 
 # Merge names
