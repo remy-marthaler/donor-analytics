@@ -7,7 +7,6 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 
 from src.core.state import get_api_client
-from src.core.layout import sidebar_footer
 
 # ----- Layout -----
 st.caption("Segments donors into clusters to prioritize outreach.")
@@ -17,7 +16,6 @@ api = get_api_client()
 # Step A: loading data
 # adjust calls to the API
 donations = api.get_donations()  # expects list from dicts
-# donors = api.get_donors()      # optional
 
 df = pd.DataFrame(donations)
 # map CSV-column to intern standard names
@@ -32,7 +30,7 @@ column_mapping = {
 # test, if these original columns exist
 missing_orig = [c for c in column_mapping.keys() if c not in df.columns]
 if missing_orig:
-    st.error(f"CSV/Mock API fehlt folgende Spalten: {missing_orig}")
+    st.error(f"Es fehlen folgende Spalten: {missing_orig}")
     st.stop()
 
 # rename columns
@@ -41,7 +39,7 @@ df = df.rename(columns=column_mapping)
 # --- Cleaning ---
 # Convert raw date strings into datetime objects, coercing invalid formats
 df["donation_date"] = pd.to_datetime(
-    df["donation_date"], errors="coerce", dayfirst=True)
+    df["donation_date"], errors="coerce")
 
 # normalise amounts: only if not numeric (z. B. CSV)
 if not pd.api.types.is_numeric_dtype(df["amount"]):
@@ -67,7 +65,7 @@ ref_date = df["donation_date"].max()
 
 rfm = (
     df.groupby("donor_id")
-    .agg( 
+    .agg(
         recency_days=("donation_date", lambda x: (ref_date - x.max()).days), # coded with AI assistance from ChatGPT
         frequency=("donation_date", "count"), # coded with AI assistance from ChatGPT
         monetary_total=("amount", "sum"), # coded with AI assistance from ChatGPT
@@ -89,7 +87,7 @@ features["monetary_total"] = np.log1p(features["monetary_total"]) # coded with A
 scaler = StandardScaler()
 X = scaler.fit_transform(features)
 
-# Step D: choosing K and fitting KMeans 
+# Step D: choosing K and fitting KMeans
 st.sidebar.header("⚙️ Settings")
 k = st.sidebar.slider("Number of Clusters (k)", 2, 8, 4)
 

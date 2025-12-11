@@ -5,6 +5,12 @@ It combines **Donor Segmentation**, **Churn Prediction**, and **Lifetime Value (
 The goal is to help charities identify high-value donors, detect churn risks, and prioritise outreach efficiently.
 
 ---
+## The Challenge Charities Face
+
+Most charities struggle not because of a lack of generosity, but because they lack the ability to understand their own fundraising data. Donations come from many different people at irregular times and in different amounts, making it difficult to recognise patterns or spot risks. As a result, organisations often do not know which supporters are highly engaged, which ones are about to stop donating, or how much future revenue they can realistically expect. This uncertainty makes planning harder and can lead to preventable revenue losses — especially for small charities with limited resources.
+
+
+---
 
 ## 📦 Features
 
@@ -14,17 +20,17 @@ The goal is to help charities identify high-value donors, detect churn risks, an
 - PCA cluster visualisation  
 - Target list for outreach  
 
-### 🔮 Churn Prediction
-- Recency-based churn labelling  
-- Logistic regression model  
-- Risk map  
-- High-risk donor list  
-
 ### 💰 Donor Lifetime Value (LTV)
 - Heuristic and ML-based LTV  
 - Feature importance  
 - Revenue-at-risk estimation  
 - Interactive What-If Simulator  
+
+### 🔮 Churn Prediction
+- Recency-based churn labelling  
+- Logistic regression model  
+- Risk map  
+- High-risk donor list  
 
 ---
 
@@ -107,6 +113,12 @@ If the key is not set:
 
 ## 📁 Project Structure
 ```
+
+pages/
+ │   ├─ segmentation_page.py
+ │   ├─ churn_page.py
+ │   ├─ ltv_page.py
+ │
 src/
  ├─ core/
  │   ├─ state.py              → API client selection (mock vs real)
@@ -115,11 +127,7 @@ src/
  ├─ data_access/
  │   ├─ api_client.py         → Real FundraisingBox API
  │   ├─ mock_api_client.py    → CSV-based offline API
- │
-pages/
- │   ├─ segmentation_page.py
- │   ├─ churn_page.py
- │   ├─ ltv_page.py
+
 
 ```
 

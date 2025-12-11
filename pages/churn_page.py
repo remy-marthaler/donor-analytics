@@ -1,21 +1,9 @@
-import sys
-import os
-
 from src.core.state import get_api_client
-
-# --- 1. SETUP: Fix imports so we can find the API ---
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from sklearn.linear_model import LogisticRegression
-
-# Import the existing API client provided by your team
-from src.data_access.mock_api_client import MockApiClient
-
-# --- PAGE CONFIGURATION ---
-st.set_page_config(page_title="Churn Prediction", page_icon="🔮")
 
 def main():
     # --- REQUIREMENT 1: CLEARLY STATE THE PROBLEM ---
@@ -32,7 +20,7 @@ def main():
         df = api.get_donations()
         
         # CLEANING: Fix weird date formats and money strings (e.g. "50,00")
-        df["date"] = pd.to_datetime(df["Getätigt am Datum"], dayfirst=True, errors='coerce')
+        df["date"] = pd.to_datetime(df["Getätigt am Datum"], errors='coerce')
         # Normalize Betrag ONLY if it is a string (from CSV)
         # NOTE: Parts of this implementation were developed with assistance from OpenAI ChatGPT (Dec 2025).
         # Specifically, the logic to handle European number formats (removing dots, replacing commas).
@@ -64,7 +52,7 @@ def main():
     # We group data by Donor ID to get stats: Recency (Days since last), Frequency (Count), Monetary (Average)
     # We use the dataset's max date as "Today" so the math works
     today = raw_df["date"].max()
-    
+
     donors = raw_df.groupby("Kontakt-ID").agg({
         "date": "max",          # Last donation date
         "Betrag": "mean",       # Average donation amount
@@ -114,7 +102,7 @@ def main():
         y="avg_amount",
         color="churn_prob",
         title="Machine Learning Risk Prediction",
-        labels={"churn_prob": "Risk Score (0-1)", "frequency": "Number of Donations"},
+        labels={"churn_prob": "Risk Score (0-1)", "frequency": "Number of Donations", "avg_amount": "Average Amount"},
         color_continuous_scale="RdBu_r" # Red = High Risk
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -134,7 +122,10 @@ def main():
         use_container_width=True,
         column_config={
             "churn_prob": st.column_config.ProgressColumn("Risk Probability", format="%.2f"),
-            "avg_amount": st.column_config.NumberColumn("Avg Donation", format="CHF %.2f"),
+            "avg_amount": st.column_config.NumberColumn("Average Donation", format="CHF %.2f"),
+            "recency": st.column_config.NumberColumn("Days Since Last Donation"),
+            "frequency": st.column_config.NumberColumn("Donation Count"),
+            "Kontakt-ID": st.column_config.NumberColumn("Donor ID"),
         }
     )
     

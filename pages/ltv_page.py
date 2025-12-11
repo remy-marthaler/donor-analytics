@@ -49,7 +49,7 @@ def load_data():
     })
 
     # Parse dates (day-first, because of German format)
-    df["date"] = pd.to_datetime(df["date"], errors="coerce", dayfirst=True)
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
     # Convert amount column to numeric and handle German decimal/thousand formats
     # NOTE: Parts of this implementation were developed with assistance from OpenAI ChatGPT (Dec 2025).
@@ -596,5 +596,5 @@ def run():
 
 
 # --- STREAMLIT ENTRY POINT ---
-if _name_ == "_main_":
+if __name__ == "__main__":
     run()
