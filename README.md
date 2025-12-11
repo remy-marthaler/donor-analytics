@@ -7,7 +7,7 @@ The goal is to help charities identify high-value donors, detect churn risks, an
 ---
 ## The Challenge Charities Face
 
-Most charities struggle not because of a lack of generosity, but because they lack the ability to understand their own fundraising data. Donations come from many different people at irregular times and in different amounts, making it difficult to recognise patterns or spot risks. As a result, organisations often do not know which supporters are highly engaged, which ones are about to stop donating, or how much future revenue they can realistically expect. This uncertainty makes planning harder and can lead to preventable revenue losses — especially for small charities with limited resources.
+Most charities struggle not because of a lack of generosity, but because they lack the ability to understand their own fundraising data. Donations come from many different people at irregular times and in different amounts, making it difficult to recognise patterns or spot risks. As a result, organisations often do not know which supporters are highly engaged, which ones are about to stop donating, or how much future revenue they can realistically expect. This uncertainty makes planning harder and can lead to preventable revenue losses, especially for small charities with limited resources.
 
 
 ---
