@@ -125,7 +125,7 @@ def main():
             "avg_amount": st.column_config.NumberColumn("Average Donation", format="CHF %.2f"),
             "recency": st.column_config.NumberColumn("Days Since Last Donation"),
             "frequency": st.column_config.NumberColumn("Donation Count"),
-            "Kontakt-ID": st.column_config.NumberColumn("Donor ID"),
+            "Kontakt-ID": st.column_config.TextColumn("Donor ID"),
         }
     )
     
