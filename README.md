@@ -137,6 +137,7 @@ src/
 
 See [Contribution Matrix](CONTRIBUTIONS.md) for a full breakdown of team contributions.
 
+GitHub repository: https://github.com/remy-marthaler/donor-analytics
 
 ## 📝 License
 
