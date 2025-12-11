@@ -4,6 +4,8 @@
 It combines **Donor Segmentation**, **Churn Prediction**, and **Lifetime Value (LTV)** estimation into one intuitive interface.  
 The goal is to help charities identify high-value donors, detect churn risks, and prioritise outreach efficiently.
 
+![donor-analytics.png](donor-analytics.png)
+
 ---
 ## The Challenge Charities Face
 
